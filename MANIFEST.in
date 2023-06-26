@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include erpnext_biotime *.css
+recursive-include erpnext_biotime *.csv
+recursive-include erpnext_biotime *.html
+recursive-include erpnext_biotime *.ico
+recursive-include erpnext_biotime *.js
+recursive-include erpnext_biotime *.json
+recursive-include erpnext_biotime *.md
+recursive-include erpnext_biotime *.png
+recursive-include erpnext_biotime *.py
+recursive-include erpnext_biotime *.svg
+recursive-include erpnext_biotime *.txt
+recursive-exclude erpnext_biotime *.pyc
