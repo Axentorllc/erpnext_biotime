@@ -1,6 +1,9 @@
 import re
 import frappe
 import httpx
+from frappe.utils.logger import get_logger
+
+logger = frappe.logger("biotime", allow_site=True, file_count=50)
 
 
 def remove_non_numeric_chars(string):
@@ -15,41 +18,59 @@ def get_connector():
     return connector
 
 
-def fetch_transactions(start_time, end_time, page, page_size=200):
+def fetch_transactions(start_time, end_time, page_size=200):
     connector = get_connector()
-    url = f"{connector.company_portal}/iclock/api/transactions/?page={page}&page_size={page_size}&start_time={start_time}&end_time={end_time}"
     headers = {"Content-Type": "application/json", "Authorization": f"JWT {connector.get_password('access_token')}"}
 
-    with httpx.Client(headers=headers) as client:
-        response = client.get(url)
-        if response.status_code == 200:
-            transactions = response.json()
-            return transactions
-
-
-def get_all_transactions(start_time, end_time):
-    all_transactions = []
     page = 1
+    checkins = []
+    with httpx.Client(headers=headers) as client:
+        is_next = True
+        while is_next:
+            try:
+                url = f"{connector.company_portal}/iclock/api/transactions/"
+                params = {
+                    "page": page,
+                    "page_size": page_size,
+                    "start_time": start_time,
+                    "end_time": end_time
+                }
+                response = client.get(url, params=params)
+                if response.status_code == 200:
+                    transactions = response.json()
+                    print("transactions", transactions["next"])
+                    for transaction in transactions["data"]:
+                        filters = {"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}
+                        code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
+                        if not code:
+                            continue
+                        checkins.append({"employee": code, "time": transaction["punch_time"], "log_type": "IN"})
 
-    is_next = True
-    while is_next:
-        transactions = fetch_transactions(start_time, end_time, page)
-        print("transactions", transactions["next"])
-        if transactions:
-            for transaction in transactions["data"]:
-                code = frappe.db.get_value("Employee", filters={"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}, fieldname="name")
-                print(">>>>", transaction["emp_code"], transaction["punch_time"], transaction["emp_code"], remove_non_numeric_chars(transaction["emp_code"]))
-                if not code:
-                    continue
-                checkin = frappe.new_doc("Employee Checkin")
-                checkin.employee = code
-                checkin.employee_name = frappe.db.get_value("Employee", code, "employee_name")
-                checkin.log_type = "IN"
-                checkin.time = transaction["punch_time"]
-                checkin.insert(ignore_permissions=True)
+                    is_next = bool(transactions["next"])
+                    page += 1
+                else:
+                    logger.error("Failed to fetch transactions. Status code: %d", response.status_code)
+                    break
+            except httpx.HTTPError as e:
+                logger.error("HTTPError occurred during API call: %s", str(e))
+                break
+            except Exception as e:
+                logger.error("An error occurred during API call: %s", str(e))
+                break
 
-            frappe.db.commit()
-            page += 1
-        if not transactions["next"]:
-            is_next = False
-    return all_transactions
+    return insert_bulk_checkins(checkins)
+
+
+def insert_bulk_checkins(checkins):
+    print("checkins", checkins)
+    for checkin in checkins:
+        try:
+            checkin_doc = frappe.new_doc("Employee Checkin")
+            checkin_doc.employee = checkin["employee"]
+            checkin_doc.employee_name = frappe.db.get_value("Employee", checkin["employee"], "employee_name")
+            checkin_doc.log_type = "IN"
+            checkin_doc.time = checkin["time"]
+            checkin_doc.insert(ignore_permissions=True)
+        except Exception as e:
+            print("Error", e)
+    frappe.db.commit()
