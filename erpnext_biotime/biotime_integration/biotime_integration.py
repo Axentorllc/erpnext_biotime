@@ -36,6 +36,7 @@ def fetch_transactions(start_time, end_time, page_size=200):
                     "end_time": end_time
                 }
                 response = client.get(url, params=params)
+                print("response", response)
                 if response.status_code == 200:
                     transactions = response.json()
                     print("transactions", transactions["next"])
@@ -44,17 +45,24 @@ def fetch_transactions(start_time, end_time, page_size=200):
                         code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
                         if not code:
                             continue
-                        checkins.append({"employee": code, "time": transaction["punch_time"], "log_type": "IN"})
+                        checkins.append({
+                            "employee": code,
+                            "time": transaction["punch_time"],
+                            "log_type": transaction["punch_state_display"]
+                        })
 
                     is_next = bool(transactions["next"])
                     page += 1
                 else:
+                    print("Failed to fetch transactions. Status code: %d", response.status_code)
                     logger.error("Failed to fetch transactions. Status code: %d", response.status_code)
                     break
             except httpx.HTTPError as e:
+                print("HTTPError occurred during API call: %s", str(e), page)
                 logger.error("HTTPError occurred during API call: %s", str(e))
                 break
             except Exception as e:
+                print("An error occurred during API call: %s", str(e))
                 logger.error("An error occurred during API call: %s", str(e))
                 break
 
@@ -68,7 +76,7 @@ def insert_bulk_checkins(checkins):
             checkin_doc = frappe.new_doc("Employee Checkin")
             checkin_doc.employee = checkin["employee"]
             checkin_doc.employee_name = frappe.db.get_value("Employee", checkin["employee"], "employee_name")
-            checkin_doc.log_type = "IN"
+            checkin_doc.log_type = "IN" if checkin["log_type"] == "Check In" else "OUT"
             checkin_doc.time = checkin["time"]
             checkin_doc.insert(ignore_permissions=True)
         except Exception as e:
