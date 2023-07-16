@@ -1,7 +1,6 @@
 import re
 import frappe
 import httpx
-from frappe.utils.logger import get_logger
 
 logger = frappe.logger("biotime", allow_site=True, file_count=50)
 
