@@ -2,6 +2,21 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('BioTime Device', {
+  onload: function(frm) {
+    frm.trigger("add_sync_device_button");
+  },
+  add_sync_device_button: function(frm) {
+    frm.add_custom_button(__('Sync Today records'), function() {
+            frappe.call({
+                method: 'erpnext_biotime.biotime_integration.biotime_integration.fetch_and_create_devices',
+                callback: function(response) {
+                    if (response.message) {
+                        frappe.msgprint(response.message);
+                    }
+                }
+            });
+        }, __("Device"));
+  },
   device_id: function (frm) {
     let device_id = frm.doc.device_id;
     if (device_id) {
