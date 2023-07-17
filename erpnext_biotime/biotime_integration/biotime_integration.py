@@ -2,6 +2,7 @@ import re
 import frappe
 import httpx
 import json
+import datetime
 
 logger = frappe.logger("biotime", allow_site=True, file_count=50)
 
@@ -22,8 +23,13 @@ def get_connector_with_headers():
     return connector, headers
 
 
-def fetch_transactions(start_time, end_time, page_size=200, **kwargs):
+def fetch_transactions(*args, **kwargs):
     connector, headers = get_connector_with_headers()
+    params = {
+        k: v
+        for k, v in kwargs.items()
+        if k in ["start_time", "end_time", "page_size", "emp_code", "terminal_sn", "terminal_alias"]
+    }
 
     page = 1
     checkins = []
@@ -32,12 +38,7 @@ def fetch_transactions(start_time, end_time, page_size=200, **kwargs):
         while is_next:
             try:
                 url = f"{connector.company_portal}/iclock/api/transactions/"
-                params = {
-                    "page": page,
-                    "page_size": page_size,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                }
+                params = dict(params, page=page)
                 response = client.get(url, params=params)
                 print("response", response)
                 if response.status_code == 200:
@@ -80,8 +81,7 @@ def fetch_transactions(start_time, end_time, page_size=200, **kwargs):
     return checkins
 
 
-def insert_bulk_checkins(start_time, end_time, page_size=200, **kwargs):
-    checkins = fetch_transactions(start_time, end_time, page_size, **kwargs)
+def insert_bulk_checkins(checkins) -> None:
     for checkin in checkins:
         try:
             checkin_doc = frappe.new_doc("Employee Checkin")
@@ -153,16 +153,6 @@ def fetch_and_create_devices(device_id=None):
 
 
 @frappe.whitelist()
-def sync_device(device_alias, last_activity):
-    """
-    Sync device by device alias. http://{ip}/iclock/api/transactions/?terminal_alias={device_alias}
-    Fetch transactions from BioTime after last sync request.
-    update last sync request.
-    """
-    fetch_transactions(last_activity, frappe.utils.now_datetime())
-
-
-@frappe.whitelist()
 def create_or_refresh_token(docname):
     headers = {"Content-Type": "application/json"}
     with httpx.Client(headers=headers) as client:
@@ -188,3 +178,24 @@ def create_or_refresh_token(docname):
         except Exception as e:
             print("An error occurred during API call: %s", str(e))
             logger.error("An error occurred during API call: %s", str(e))
+
+
+def hourly_sync_devices():
+    """
+    Sync devices every hour.
+    call:
+    /iclock/api/transactions/?start_time={last_activity}&end_time={last_activity+1 hours}&terminal_alias={device_alias}
+    """
+    all_devices = frappe.get_all("BioTime Device", fields=["name", "device_id", "device_alias", "last_activity"])
+    all_checkins = []
+    for device in all_devices:
+        start_time = device["last_activity"]
+        end_time = (start_time + datetime.timedelta(hours=12)).strftime("%Y-%m-%d %H:%M:%S")
+        terminal_alias = device["device_alias"]
+        device_checkins = fetch_transactions(
+            start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
+        )
+        print("Device checkins", device_checkins)
+        all_checkins.extend(device_checkins)
+
+    return insert_bulk_checkins(all_checkins)

@@ -111,23 +111,15 @@ app_license = "MIT"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"erpnext_biotime.tasks.all"
-# 	],
-# 	"daily": [
-# 		"erpnext_biotime.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"erpnext_biotime.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"erpnext_biotime.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"erpnext_biotime.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+    "all": [],
+    "daily": [],
+    "hourly": [
+        "erpnext_biotime.biotime_integration.biotime_integration.hourly_sync_devices",
+    ],
+    "weekly": [],
+    "monthly": [],
+}
 
 # Testing
 # -------
