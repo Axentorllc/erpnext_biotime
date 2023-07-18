@@ -96,7 +96,7 @@ def insert_bulk_checkins(checkins) -> None:
 
 
 @frappe.whitelist()
-def fetch_and_create_devices(device_id=None):
+def fetch_and_create_devices(device_id: str = None) -> None | dict:
     """
     Fetch devices from BioTime and create them in ERPNext. http://{ip}/iclock/api/terminals/
     Or fetch a single device by ID.
@@ -195,7 +195,9 @@ def hourly_sync_devices():
         device_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
         )
-        print("Device checkins", device_checkins)
+        updated_last_activity = fetch_and_create_devices(device_id=device["device_id"])["last_activity"]
+        frappe.db.set_value("BioTime Device", device["name"], "last_activity", updated_last_activity)
+        frappe.db.set_value("BioTime Device", device["name"], "last_sync_request", frappe.utils.now_datetime())
         all_checkins.extend(device_checkins)
 
     return insert_bulk_checkins(all_checkins)
