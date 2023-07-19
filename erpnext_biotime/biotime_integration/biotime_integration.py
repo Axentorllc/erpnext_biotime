@@ -190,7 +190,7 @@ def hourly_sync_devices():
     all_checkins = []
     for device in all_devices:
         start_time = device["last_activity"]
-        end_time = (start_time + datetime.timedelta(hours=12)).strftime("%Y-%m-%d %H:%M:%S")
+        end_time = (start_time + datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
         terminal_alias = device["device_alias"]
         device_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
