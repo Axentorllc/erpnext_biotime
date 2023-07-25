@@ -20,6 +20,21 @@ def get_connector_with_headers():
         "Content-Type": "application/json",
         "Authorization": f"JWT {connector.get_password('access_token')}",
     }
+    # simple check to see if token is expired
+    if not connector.get_password("access_token"):
+        create_or_refresh_token(connector.name)
+        with httpx.Client(headers=headers) as client:
+            try:
+                url = f"{connector.company_portal}/iclock/api/terminals/"
+                response = client.get(url)
+                if response.status_code == 200:
+                    pass
+                else:
+                    logger.error("Failed to fetch devices. Status code: %d", response.status_code)
+            except httpx.HTTPError as e:
+                logger.error("HTTPError occurred during API call: %s", str(e))
+            except Exception as e:
+                logger.error("An error occurred during API call: %s", str(e))
     return connector, headers
 
 
@@ -40,10 +55,8 @@ def fetch_transactions(*args, **kwargs):
                 url = f"{connector.company_portal}/iclock/api/transactions/"
                 params = dict(params, page=page)
                 response = client.get(url, params=params)
-                print("response", response)
                 if response.status_code == 200:
                     transactions = response.json()
-                    print("transactions", transactions["next"])
                     for transaction in transactions["data"]:
                         filters = {"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}
                         code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
@@ -60,21 +73,15 @@ def fetch_transactions(*args, **kwargs):
                     is_next = bool(transactions["next"])
                     page += 1
                 else:
-                    print(
-                        "Failed to fetch transactions. Status code: %d",
-                        response.status_code,
-                    )
                     logger.error(
                         "Failed to fetch transactions. Status code: %d",
                         response.status_code,
                     )
                     break
             except httpx.HTTPError as e:
-                print("HTTPError occurred during API call: %s", str(e), page)
                 logger.error("HTTPError occurred during API call: %s", str(e))
                 break
             except Exception as e:
-                print("An error occurred during API call: %s", str(e))
                 logger.error("An error occurred during API call: %s", str(e))
                 break
 
@@ -91,8 +98,7 @@ def insert_bulk_checkins(checkins) -> None:
             checkin_doc.time = checkin["time"]
             checkin_doc.insert(ignore_permissions=True)
         except Exception as e:
-            print("Error", e)
-    frappe.db.commit()
+            logger.error("An error occurred while inserting checkin: %s", str(e))
 
 
 @frappe.whitelist()
@@ -137,22 +143,17 @@ def fetch_and_create_devices(device_id: str = None) -> None | dict:
                         device_doc.insert(ignore_permissions=True)
                         _created_devices.append(device_doc)
                     except frappe.DuplicateEntryError:
-                        print("Device already exists")
+                        logger.error("Device already exists in ERPNext: %s", device["terminal_name"])
                         continue
-                frappe.db.commit()
                 frappe.msgprint(f"{len(_created_devices)} new device(s) created successfully")
             else:
-                print("Failed to fetch device(s). Status code: %d", response.status_code)
                 logger.error("Failed to fetch device(s). Status code: %d", response.status_code)
         except httpx.HTTPError as e:
-            print("HTTPError occurred during API call: %s", str(e))
             logger.error("HTTPError occurred during API call: %s", str(e))
         except Exception as e:
-            print("An error occurred during API call: %s", str(e))
             logger.error("An error occurred during API call: %s", str(e))
 
 
-@frappe.whitelist()
 def create_or_refresh_token(docname):
     headers = {"Content-Type": "application/json"}
     with httpx.Client(headers=headers) as client:
@@ -170,13 +171,10 @@ def create_or_refresh_token(docname):
                 connector.save(ignore_permissions=True)
                 return True
             else:
-                print("Failed to fetch token. Status code: %d", response.status_code)
                 logger.error("Failed to fetch token. Status code: %d", response.status_code)
         except httpx.HTTPError as e:
-            print("HTTPError occurred during API call: %s", str(e))
             logger.error("HTTPError occurred during API call: %s", str(e))
         except Exception as e:
-            print("An error occurred during API call: %s", str(e))
             logger.error("An error occurred during API call: %s", str(e))
 
 
