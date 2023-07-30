@@ -3,7 +3,7 @@ import json
 import re
 
 import frappe
-import httpx
+import requests
 
 logger = frappe.logger("biotime", allow_site=True, file_count=50)
 
@@ -14,93 +14,92 @@ def remove_non_numeric_chars(string):
     return result
 
 
-def get_connector_with_headers(func):
+def get_connector_with_headers() -> tuple:
     """
-    Decorator to get the enabled not-expired connector and headers for API calls.
+    Get the enabled connector and its headers.
     """
-
-    def wrapper(*args, **kwargs):
-        enabled_connector = frappe.db.get_value("BioTime Connector", filters={"is_enabled": 1}, fieldname="name")
-        connector = frappe.get_doc("BioTime Connector", enabled_connector)
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"JWT {connector.get_password('access_token')}",
-        }
-        # Check if the access token is expired
-        with httpx.Client(headers=headers) as client:
-            try:
-                url = f"{connector.company_portal}/iclock/api/terminals/"
-                response = client.get(url)
-                # access token is valid
-                if response.status_code == 200:
-                    return func(connector, headers, *args, **kwargs)
-                # access token is expired
-                else:
-                    connector = refresh_connector_token(connector)
-                    return func(connector, headers, *args, **kwargs)
-            except httpx.HTTPError as e:
-                logger.error("HTTPError occurred during API call: %s", str(e))
-            except Exception as e:
-                logger.error("An error occurred during API call: %s", str(e))
-
-    return wrapper
+    enabled_connector = frappe.db.get_value("BioTime Connector", filters={"is_enabled": 1}, fieldname="name")
+    connector = frappe.get_doc("BioTime Connector", enabled_connector)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"JWT {connector.get_password('access_token')}",
+    }
+    # Check if the access token is expired
+    try:
+        url = f"{connector.company_portal}/iclock/api/terminals/"
+        response = requests.get(url, headers=headers)
+        # access token is valid
+        if response.status_code == 200:
+            return connector, headers
+        # access token is expired
+        elif response.status_code == 401:
+            connector = refresh_connector_token(connector.name)
+            return connector, headers
+        else:
+            raise Exception(f"Failed to fetch devices. Status code: {response.raise_for_status()}")
+    except requests.RequestException as e:
+        logger.error("HTTPError occurred during API call: %s", str(e))
+        raise e
 
 
 @frappe.whitelist()
-@get_connector_with_headers
-def fetch_and_create_devices(connector, headers, device_id=None) -> None | dict:
+def fetch_and_create_devices(device_id=None) -> None | dict:
     """
     Fetch devices from BioTime and create them in ERPNext. http://{ip}/iclock/api/terminals/
     Or fetch a single device by ID.
     """
-    with httpx.Client(headers=headers) as client:
-        try:
-            url = (
-                f"{connector.company_portal}/iclock/api/terminals/"
-                if not device_id
-                else f"{connector.company_portal}/iclock/api/terminals/{device_id}/"
-            )
-            response = client.get(url)
-            if response.status_code == 200:
-                if device_id:
-                    data = response.json()
-                    return {
-                        "device_id": data["id"],
-                        "device_name": data["terminal_name"],
-                        "device_alias": data["alias"],
-                        "device_ip_address": data["ip_address"],
-                        "last_activity": data["last_activity"],
-                        "last_sync_request": frappe.utils.now_datetime(),
-                        "device_area": f"{data['area']['area_name']} - {data['area']['area_code']}",
-                    }
-                devices = response.json()["data"]
-                _created_devices = []
-                for device in devices:
-                    try:
-                        device_doc = frappe.new_doc("BioTime Device")
-                        device_doc.device_id = device["id"]
-                        device_doc.device_name = device["terminal_name"]
-                        device_doc.device_alias = device["alias"]
-                        device_doc.device_ip_address = device["ip_address"]
-                        device_doc.last_activity = device["last_activity"]
-                        device_doc.last_sync_request = frappe.utils.now_datetime()
-                        device_doc.device_area = f"{device['area']['area_name']} - {device['area']['area_code']}"
-                        device_doc.insert(ignore_permissions=True)
-                        _created_devices.append(device_doc)
-                    except frappe.DuplicateEntryError:
-                        logger.error("Device already exists in ERPNext: %s", device["terminal_name"])
-                        continue
-                frappe.msgprint(f"{len(_created_devices)} new device(s) created successfully")
-            else:
-                logger.error("Failed to fetch device(s). Status code: %d", response.status_code)
-        except httpx.HTTPError as e:
-            logger.error("HTTPError occurred during API call: %s", str(e))
-        except Exception as e:
-            logger.error("An error occurred during API call: %s", str(e))
+
+    connector, headers = get_connector_with_headers()
+
+    try:
+        url = (
+            f"{connector.company_portal}/iclock/api/terminals/"
+            if not device_id
+            else f"{connector.company_portal}/iclock/api/terminals/{device_id}/"
+        )
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            if device_id:
+                data = response.json()
+                return {
+                    "device_id": data["id"],
+                    "device_name": data["terminal_name"],
+                    "device_alias": data["alias"],
+                    "device_ip_address": data["ip_address"],
+                    "last_activity": data["last_activity"],
+                    "last_sync_request": frappe.utils.now_datetime(),
+                    "device_area": f"{data['area']['area_name']} - {data['area']['area_code']}",
+                }
+            devices = response.json()["data"]
+            _created_devices = []
+            for device in devices:
+                try:
+                    device_doc = frappe.new_doc("BioTime Device")
+                    device_doc.device_id = device["id"]
+                    device_doc.device_name = device["terminal_name"]
+                    device_doc.device_alias = device["alias"]
+                    device_doc.device_ip_address = device["ip_address"]
+                    device_doc.last_activity = device["last_activity"]
+                    device_doc.last_sync_request = frappe.utils.now_datetime()
+                    device_doc.device_area = f"{device['area']['area_name']} - {device['area']['area_code']}"
+                    device_doc.insert(ignore_permissions=True)
+                    _created_devices.append(device_doc)
+                except frappe.DuplicateEntryError:
+                    logger.error("Device already exists in ERPNext: %s", device["terminal_name"])
+                    continue
+            frappe.msgprint(f"{len(_created_devices)} new device(s) created successfully")
+        else:
+            logger.error("Failed to fetch device(s). Status code: %d", response.status_code)
+    except requests.RequestException as e:
+        logger.error("HTTPError occurred during API call: %s", str(e))
+        raise e
 
 
-@get_connector_with_headers
-def fetch_transactions(connector, headers, *args, **kwargs):
+def fetch_transactions(*args, **kwargs):
+    """
+    Fetch transactions from BioTime. http://{ip}/iclock/api/transactions/
+    """
+    connector, headers = get_connector_with_headers()
     params = {
         k: v
         for k, v in kwargs.items()
@@ -109,42 +108,39 @@ def fetch_transactions(connector, headers, *args, **kwargs):
 
     page = 1
     checkins = []
-    with httpx.Client(headers=headers) as client:
-        is_next = True
-        while is_next:
-            try:
-                url = f"{connector.company_portal}/iclock/api/transactions/"
-                params = dict(params, page=page)
-                response = client.get(url, params=params)
-                if response.status_code == 200:
-                    transactions = response.json()
-                    for transaction in transactions["data"]:
-                        filters = {"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}
-                        code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
-                        if not code:
-                            continue
-                        checkins.append(
-                            {
-                                "employee": code,
-                                "time": transaction["punch_time"],
-                                "log_type": transaction["punch_state_display"],
-                            }
-                        )
-
-                    is_next = bool(transactions["next"])
-                    page += 1
-                else:
-                    logger.error(
-                        "Failed to fetch transactions. Status code: %d",
-                        response.status_code,
+    is_next = True
+    while is_next:
+        try:
+            url = f"{connector.company_portal}/iclock/api/transactions/"
+            params = dict(params, page=page)
+            response = requests.get(url, params=params, headers=headers)
+            if response.status_code == 200:
+                transactions = response.json()
+                for transaction in transactions["data"]:
+                    filters = {"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}
+                    code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
+                    # TODO: Handle this case - if the employee is not found in ERPNext. checkin replica?
+                    if not code:
+                        continue
+                    checkins.append(
+                        {
+                            "employee": code,
+                            "time": transaction["punch_time"],
+                            "log_type": transaction["punch_state_display"],
+                        }
                     )
-                    break
-            except httpx.HTTPError as e:
-                logger.error("HTTPError occurred during API call: %s", str(e))
-                break
-            except Exception as e:
-                logger.error("An error occurred during API call: %s", str(e))
-                break
+
+                is_next = bool(transactions["next"])
+                page += 1
+            else:
+                logger.error(
+                    "Failed to fetch transactions. Status code: %d",
+                    response.status_code,
+                )
+                response.raise_for_status()
+        except requests.RequestException as e:
+            logger.error("HTTPError occurred during API call: %s", str(e))
+            raise e
 
     return checkins
 
@@ -164,26 +160,25 @@ def insert_bulk_checkins(checkins) -> None:
 
 def refresh_connector_token(docname):
     headers = {"Content-Type": "application/json"}
-    with httpx.Client(headers=headers) as client:
-        try:
-            connector = frappe.get_doc("BioTime Connector", docname)
-            url = f"{connector.company_portal}/jwt-api-token-auth/"
-            non_hashed_password = frappe.get_doc("BioTime Connector", docname).get_password("password")
-            response = client.post(
-                url,
-                data=json.dumps({"username": connector.username, "password": non_hashed_password}),
-            )
-            if response.status_code == 200:
-                access_token = response.json()["token"]
-                connector.access_token = access_token
-                connector.save(ignore_permissions=True)
-                return connector
-            else:
-                logger.error("Failed to fetch token. Status code: %d", response.status_code)
-        except httpx.HTTPError as e:
-            logger.error("HTTPError occurred during API call: %s", str(e))
-        except Exception as e:
-            logger.error("An error occurred during API call: %s", str(e))
+    try:
+        connector = frappe.get_doc("BioTime Connector", docname)
+        url = f"{connector.company_portal}/jwt-api-token-auth/"
+        non_hashed_password = frappe.get_doc("BioTime Connector", docname).get_password("password")
+        response = requests.post(
+            url,
+            data=json.dumps({"username": connector.username, "password": non_hashed_password}),
+            headers=headers,
+        )
+        if response.status_code == 200:
+            access_token = response.json()["token"]
+            connector.access_token = access_token
+            connector.save(ignore_permissions=True)
+            return connector
+        else:
+            logger.error("Failed to fetch token. Status code: %d", response.status_code)
+    except requests.RequestException as e:
+        logger.error("HTTPError occurred during API call: %s", str(e))
+        raise e
 
 
 def hourly_sync_devices():
