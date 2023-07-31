@@ -1,6 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "format:{company}-{username}",
  "creation": "2023-07-02 15:40:52.891369",
  "default_view": "List",
  "doctype": "DocType",
@@ -9,6 +10,9 @@
  "field_order": [
   "access_details_section",
   "company_portal",
+  "column_break_8vomf",
+  "is_enabled",
+  "section_break_bg2z9",
   "username",
   "password",
   "access_token"
@@ -17,7 +21,7 @@
   {
    "fieldname": "access_details_section",
    "fieldtype": "Section Break",
-   "label": "Access Details"
+   "label": "Information"
   },
   {
    "fieldname": "company_portal",
@@ -38,14 +42,29 @@
    "fieldname": "access_token",
    "fieldtype": "Password",
    "label": "Access Token"
+  },
+  {
+   "fieldname": "column_break_8vomf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_enabled",
+   "fieldtype": "Check",
+   "label": "Is Enabled"
+  },
+  {
+   "fieldname": "section_break_bg2z9",
+   "fieldtype": "Section Break"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2023-07-02 15:40:52.891369",
+ "modified": "2023-07-19 17:36:57.968370",
  "modified_by": "Administrator",
  "module": "Erpnext Biotime",
  "name": "BioTime Connector",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
