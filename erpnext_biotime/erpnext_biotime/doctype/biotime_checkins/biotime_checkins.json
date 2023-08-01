@@ -1,0 +1,124 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2023-08-01 11:12:18.526623",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_visxb",
+  "biotime_employee_code",
+  "first_name",
+  "last_name",
+  "column_break_lcbj8",
+  "department",
+  "position",
+  "section_break_zhmbi",
+  "device_sn",
+  "device_alias",
+  "column_break_h06cd",
+  "log_type",
+  "time"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_visxb",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "biotime_employee_code",
+   "fieldtype": "Data",
+   "label": "BioTime Employee Code",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "first_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "First Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_name",
+   "fieldtype": "Data",
+   "label": "Last Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_lcbj8",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Data",
+   "label": "Department",
+   "read_only": 1
+  },
+  {
+   "fieldname": "position",
+   "fieldtype": "Data",
+   "label": "Position",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_zhmbi",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "device_sn",
+   "fieldtype": "Data",
+   "label": "Device SN",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_alias",
+   "fieldtype": "Data",
+   "label": "Device Alias",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_h06cd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "log_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Log Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Time",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2023-08-01 11:12:18.526623",
+ "modified_by": "Administrator",
+ "module": "Erpnext Biotime",
+ "name": "BioTime Checkins",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
