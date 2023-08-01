@@ -95,7 +95,7 @@ def fetch_and_create_devices(device_id=None) -> None | dict:
         raise e
 
 
-def fetch_transactions(*args, **kwargs):
+def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
     """
     Fetch transactions from BioTime. http://{ip}/iclock/api/transactions/
     """
@@ -108,6 +108,7 @@ def fetch_transactions(*args, **kwargs):
 
     page = 1
     checkins = []
+    biotime_checkins = []
     is_next = True
     while is_next:
         try:
@@ -119,9 +120,21 @@ def fetch_transactions(*args, **kwargs):
                 for transaction in transactions["data"]:
                     filters = {"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}
                     code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
-                    # TODO: Handle this case - if the employee is not found in ERPNext. checkin replica?
                     if not code:
-                        continue
+                        # Employee not found in ERPNext, save the transaction in a separate Checkin Log
+                        biotime_checkins.append(
+                            {
+                                "biotime_employee_code": transaction["emp_code"],
+                                "first_name": transaction["first_name"],
+                                "last_name": transaction["last_name"],
+                                "department": transaction["department"],
+                                "position": transaction["position"],
+                                "device_sn": transaction["terminal_sn"],
+                                "device_alias": transaction["terminal_alias"],
+                                "log_type": transaction["punch_state_display"],
+                                "time": transaction["punch_time"],
+                            }
+                        )
                     checkins.append(
                         {
                             "employee": code,
@@ -142,7 +155,7 @@ def fetch_transactions(*args, **kwargs):
             logger.error("HTTPError occurred during API call: %s", str(e))
             raise e
 
-    return checkins
+    return checkins, biotime_checkins
 
 
 def insert_bulk_checkins(checkins) -> None:
@@ -152,6 +165,24 @@ def insert_bulk_checkins(checkins) -> None:
             checkin_doc.employee = checkin["employee"]
             checkin_doc.employee_name = frappe.db.get_value("Employee", checkin["employee"], "employee_name")
             checkin_doc.log_type = "IN" if checkin["log_type"] == "Check In" else "OUT"
+            checkin_doc.time = checkin["time"]
+            checkin_doc.insert(ignore_permissions=True)
+        except Exception as e:
+            logger.error("An error occurred while inserting checkin: %s", str(e))
+
+
+def insert_bulk_biotime_checkins(checkins) -> None:
+    for checkin in checkins:
+        try:
+            checkin_doc = frappe.new_doc("BioTime Checkins")
+            checkin_doc.biotime_employee_code = checkin["biotime_employee_code"]
+            checkin_doc.first_name = checkin["first_name"]
+            checkin_doc.last_name = checkin["last_name"]
+            checkin_doc.department = checkin["department"]
+            checkin_doc.position = checkin["position"]
+            checkin_doc.device_sn = checkin["device_sn"]
+            checkin_doc.device_alias = checkin["device_alias"]
+            checkin_doc.log_type = checkin["log_type"]
             checkin_doc.time = checkin["time"]
             checkin_doc.insert(ignore_permissions=True)
         except Exception as e:
@@ -181,7 +212,7 @@ def refresh_connector_token(docname):
         raise e
 
 
-def hourly_sync_devices():
+def hourly_sync_devices() -> None:
     """
     Sync devices every hour.
     call:
@@ -189,16 +220,20 @@ def hourly_sync_devices():
     """
     all_devices = frappe.get_all("BioTime Device", fields=["name", "device_id", "device_alias", "last_activity"])
     all_checkins = []
+    # checkins that are not in ERPNext
+    all_biotime_checkins = []
     for device in all_devices:
         start_time = device["last_activity"]
         end_time = (start_time + datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
         terminal_alias = device["device_alias"]
-        device_checkins = fetch_transactions(
+        device_checkins, biotime_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
         )
         updated_last_activity = fetch_and_create_devices(device_id=device["device_id"])["last_activity"]
         frappe.db.set_value("BioTime Device", device["name"], "last_activity", updated_last_activity)
         frappe.db.set_value("BioTime Device", device["name"], "last_sync_request", frappe.utils.now_datetime())
         all_checkins.extend(device_checkins)
+        all_biotime_checkins.extend(biotime_checkins)
 
-    return insert_bulk_checkins(all_checkins)
+    insert_bulk_checkins(all_checkins)
+    insert_bulk_biotime_checkins(all_biotime_checkins)
