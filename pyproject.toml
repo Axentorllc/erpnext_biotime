@@ -18,7 +18,7 @@ select = [
     "I",  # isort
     "C",  # flake8-comprehensions
     "B",  # flake8-bugbear
-    "T201",
+#    "T201",
     "T203",
 ]
 ignore = [

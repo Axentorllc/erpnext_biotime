@@ -237,3 +237,13 @@ def hourly_sync_devices() -> None:
 
     insert_bulk_checkins(all_checkins)
     insert_bulk_biotime_checkins(all_biotime_checkins)
+
+
+def fetch_and_insert(*args, **kwargs):
+    checkins, biotime_checkins = fetch_transactions(*args, **kwargs)
+
+    print("checkins", checkins)
+    print("biotime_checkins", biotime_checkins)
+
+    insert_bulk_checkins(checkins)
+    insert_bulk_biotime_checkins(biotime_checkins)
