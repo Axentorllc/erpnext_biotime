@@ -118,7 +118,7 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
             if response.status_code == 200:
                 transactions = response.json()
                 for transaction in transactions["data"]:
-                    filters = {"attendance_device_id": remove_non_numeric_chars(transaction["emp_code"])}
+                    filters = {"attendance_device_id": transaction["emp_code"]}
                     code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
                     if not code:
                         # Employee not found in ERPNext, save the transaction in a separate Checkin Log
