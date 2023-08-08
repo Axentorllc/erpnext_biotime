@@ -120,28 +120,21 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
                 for transaction in transactions["data"]:
                     filters = {"attendance_device_id": transaction["emp_code"]}
                     code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
-                    if not code:
+                    _transaction_dict = {
+                        "first_name": transaction["first_name"],
+                        "last_name": transaction["last_name"],
+                        "department": transaction["department"],
+                        "position": transaction["position"],
+                        "device_sn": transaction["terminal_sn"],
+                        "device_alias": transaction["terminal_alias"],
+                        "log_type": "IN" if transaction["punch_state_display"] == "Check In" else "OUT",
+                        "time": transaction["punch_time"],
+                    }
+                    if code:
+                        checkins.append(dict(_transaction_dict, employee=code))
+                    else:
                         # Employee not found in ERPNext, save the transaction in a separate Checkin Log
-                        biotime_checkins.append(
-                            {
-                                "biotime_employee_code": transaction["emp_code"],
-                                "first_name": transaction["first_name"],
-                                "last_name": transaction["last_name"],
-                                "department": transaction["department"],
-                                "position": transaction["position"],
-                                "device_sn": transaction["terminal_sn"],
-                                "device_alias": transaction["terminal_alias"],
-                                "log_type": transaction["punch_state_display"],
-                                "time": transaction["punch_time"],
-                            }
-                        )
-                    checkins.append(
-                        {
-                            "employee": code,
-                            "time": transaction["punch_time"],
-                            "log_type": transaction["punch_state_display"],
-                        }
-                    )
+                        biotime_checkins.append(dict(_transaction_dict, biotime_employee_code=transaction["emp_code"]))
 
                 is_next = bool(transactions["next"])
                 page += 1
@@ -164,8 +157,9 @@ def insert_bulk_checkins(checkins) -> None:
             checkin_doc = frappe.new_doc("Employee Checkin")
             checkin_doc.employee = checkin["employee"]
             checkin_doc.employee_name = frappe.db.get_value("Employee", checkin["employee"], "employee_name")
-            checkin_doc.log_type = "IN" if checkin["log_type"] == "Check In" else "OUT"
+            checkin_doc.log_type = checkin["log_type"]
             checkin_doc.time = checkin["time"]
+            checkin_doc.device_id = f"{checkin['device_sn']} - {checkin['device_alias']}"
             checkin_doc.insert(ignore_permissions=True)
         except Exception as e:
             logger.error("An error occurred while inserting checkin: %s", str(e))
@@ -204,6 +198,7 @@ def refresh_connector_token(docname):
             access_token = response.json()["token"]
             connector.access_token = access_token
             connector.save(ignore_permissions=True)
+            frappe.db.commit()
             return connector
         else:
             logger.error("Failed to fetch token. Status code: %d", response.status_code)
@@ -247,3 +242,42 @@ def fetch_and_insert(*args, **kwargs):
 
     insert_bulk_checkins(checkins)
     insert_bulk_biotime_checkins(biotime_checkins)
+
+
+# patch
+
+
+def insert_location(*args, **kwargs):
+    """
+    - get all Employee Checkins
+    - build a dict of {employee-time-log_type: docname}
+    """
+
+    filters = {
+        "time": ["between", [kwargs.get("start_time"), kwargs.get("end_time")]],
+    }
+
+    # A dict of {employee-time-log_type: docname}
+    checkin_records = {}
+    for doc in frappe.get_all("Employee Checkin", fields=["name", "employee", "time", "log_type"], filters=filters):
+        checkin_records[f"{doc.employee}-{doc.time}-{doc.log_type}"] = doc.name
+
+    print("Existing Employee Checkins", checkin_records)
+
+    checkins, _ = fetch_transactions(
+        start_time=kwargs.get("start_time"), end_time=kwargs.get("end_time"), page_size=10000
+    )
+
+    print("Returned Checkins", checkins)
+
+    checkins_mapping = {}
+    for checkin in checkins:
+        location_value = f"{checkin['device_sn']} - {checkin['device_alias']}"
+        checkins_mapping[f"{checkin['employee']}-{checkin['time']}-{checkin['log_type']}"] = location_value
+
+    print("checkins_mapping", checkins_mapping)
+
+    # update Employee Checkins
+    for key, location in checkins_mapping.items():
+        if key in checkin_records:
+            frappe.db.set_value("Employee Checkin", checkin_records[key], "device_id", location)
