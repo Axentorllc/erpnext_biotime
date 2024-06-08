@@ -285,11 +285,9 @@ def insert_location(*args, **kwargs):
 
 
 def get_last_checkin(device: dict) -> datetime.datetime | None:
-	last_timestamp = frappe.db.get_all(
-			"Employee Checkin",
-			filters={"device_id": ["like", "%" + device.get('device_alias') + "%"]},
-			fields=["MAX(time) as time"],
-		)
-	return last_timestamp[0].get("time") if last_timestamp else None
-
-	
+    last_timestamp = frappe.db.get_all(
+        "Employee Checkin",
+        filters={"device_id": ["like", "%" + device.get("device_alias") + "%"]},
+        fields=["MAX(time) as time"],
+    )
+    return last_timestamp[0].get("time") if last_timestamp else None
