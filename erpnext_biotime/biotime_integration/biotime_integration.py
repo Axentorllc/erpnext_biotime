@@ -218,8 +218,9 @@ def hourly_sync_devices() -> None:
     # checkins that are not in ERPNext
     all_biotime_checkins = []
     for device in all_devices:
-        start_time = device["last_activity"]
-        end_time = (start_time + datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        last_timestamp = get_last_checkin(device)
+        start_time = last_timestamp or device["last_activity"]
+        end_time = (start_time + datetime.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         terminal_alias = device["device_alias"]
         device_checkins, biotime_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
@@ -281,3 +282,14 @@ def insert_location(*args, **kwargs):
     for key, location in checkins_mapping.items():
         if key in checkin_records:
             frappe.db.set_value("Employee Checkin", checkin_records[key], "device_id", location)
+
+
+def get_last_checkin(device: dict) -> datetime.datetime | None:
+	last_timestamp = frappe.db.get_all(
+			"Employee Checkin",
+			filters={"device_id": ["like", "%" + device.get('device_alias') + "%"]},
+			fields=["MAX(time) as time"],
+		)
+	return last_timestamp[0].get("time") if last_timestamp else None
+
+	
