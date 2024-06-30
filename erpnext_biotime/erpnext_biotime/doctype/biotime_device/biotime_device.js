@@ -1,9 +1,11 @@
 // Copyright (c) 2023, Axentor and contributors
 // For license information, please see license.txt
 
+
 frappe.ui.form.on('BioTime Device', {
   onload: function(frm) {
     frm.trigger("add_sync_device_button");
+    
   },
   add_sync_device_button: function(frm) {
     frm.add_custom_button(__('Sync Today records'), function() {
@@ -16,6 +18,54 @@ frappe.ui.form.on('BioTime Device', {
                 }
             });
         }, __("Device"));
+      frm.add_custom_button(__('Sync Records By Date'), function() {
+        var dialog = new frappe.ui.Dialog({
+            title: __("Select Dates"),
+            fields: [
+                {
+                    label: __("Start Date"),
+                    fieldname: "start_date",
+                    fieldtype: "Date",
+                    reqd: 1
+                },
+                {
+                    label: __("End Date"),
+                    fieldname: "end_date",
+                    fieldtype: "Date",
+                    reqd: 1
+                }
+            ],
+            primary_action_label: __("Fetch Transactions"),
+            primary_action: function() {
+                var values = dialog.get_values();
+                if (!values) return;
+
+                var start_date = values.start_date;
+                var end_date = values.end_date;
+                var device_id = frm.doc.device_id; 
+
+                // Call fetch_and_create_devices function with start_date and end_date
+                frappe.call({
+                    method: 'erpnext_biotime.erpnext_biotime.doctype.biotime_device.biotime_device.enqueu_manual_sync',
+                    args: { 
+                        start_date: start_date,
+                        end_date: end_date,
+                        device_id:device_id
+                    },
+                    callback: function(response) {
+                        if (response.message) {
+                            frappe.msgprint(response.message);
+                            frm.refresh();
+                        }
+                    }
+                });
+
+                dialog.hide();
+            }
+        });
+
+        dialog.show();
+    }, __("Device"));
   },
   device_id: function (frm) {
     let device_id = frm.doc.device_id;
