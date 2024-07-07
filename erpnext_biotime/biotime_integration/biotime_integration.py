@@ -90,6 +90,7 @@ def fetch_and_create_devices(device_id=None) -> None | dict:
             frappe.msgprint(f"{len(_created_devices)} new device(s) created successfully")
         else:
             logger.error("Failed to fetch device(s). Status code: %d", response.status_code)
+            return {}
     except requests.RequestException as e:
         logger.error("HTTPError occurred during API call: %s", str(e))
         raise e
@@ -225,8 +226,9 @@ def hourly_sync_devices() -> None:
         device_checkins, biotime_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
         )
-        updated_last_activity = fetch_and_create_devices(device_id=device["device_id"])["last_activity"]
-        frappe.db.set_value("BioTime Device", device["name"], "last_activity", updated_last_activity)
+        updated_last_activity = fetch_and_create_devices(device_id=device["device_id"]).get("last_activity")
+        if updated_last_activity:
+            frappe.db.set_value("BioTime Device", device["name"], "last_activity", updated_last_activity)
         frappe.db.set_value("BioTime Device", device["name"], "last_sync_request", frappe.utils.now_datetime())
         all_checkins.extend(device_checkins)
         all_biotime_checkins.extend(biotime_checkins)
