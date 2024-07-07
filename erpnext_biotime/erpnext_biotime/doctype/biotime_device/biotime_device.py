@@ -40,8 +40,7 @@ class BioTimeDevice(Document):
 		
 @frappe.whitelist()
 def enqueu_manual_sync(start_date, end_date, device_id):
-	
-	frappe.enqueue("erpnext_biotime.erpnext_biotime.doctype.biotime_device.biotime_device.manual_sync_transactions_by_date_range", 
+	frappe.enqueue(BioTimeDevice.manual_sync_transactions_by_date_range, 
 			queue='long',
 			job_name="Manual Biotime Sync",
 			start_date=start_date, 
