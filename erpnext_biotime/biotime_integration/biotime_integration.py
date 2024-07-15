@@ -162,10 +162,12 @@ def insert_bulk_checkins(checkins) -> None:
             checkin_doc.time = checkin["time"]
             checkin_doc.device_id = f"{checkin['device_sn']} - {checkin['device_alias']}"
             checkin_doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+
         except Exception as e:
-            logger.error("An error occurred while inserting checkin: %s", str(e))
-
-
+           trace = str(e) + frappe.get_traceback(with_context=True)
+           logger.error(trace)
+        
 def insert_bulk_biotime_checkins(checkins) -> None:
     for checkin in checkins:
         try:
@@ -180,9 +182,11 @@ def insert_bulk_biotime_checkins(checkins) -> None:
             checkin_doc.log_type = checkin["log_type"]
             checkin_doc.time = checkin["time"]
             checkin_doc.insert(ignore_permissions=True)
-        except Exception as e:
-            logger.error("An error occurred while inserting checkin: %s", str(e))
+            frappe.db.commit()
 
+        except Exception as e:
+           trace = str(e) + frappe.get_traceback(with_context=True)
+           logger.error(trace)
 
 def refresh_connector_token(docname):
     headers = {"Content-Type": "application/json"}
@@ -215,28 +219,25 @@ def hourly_sync_devices() -> None:
     /iclock/api/transactions/?start_time={last_activity}&end_time={last_activity+1 hours}&terminal_alias={device_alias}
     """
     all_devices = frappe.get_all("BioTime Device", fields=["name", "device_id", "device_alias", "last_activity"])
-    all_checkins = []
-    # checkins that are not in ERPNext
-    all_biotime_checkins = []
+    
     for device in all_devices:
-        last_timestamp = get_last_checkin(device)
-        start_time = last_timestamp or device["last_activity"]
-        end_time = (start_time + datetime.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        all_checkins = []
+        # checkins that are not in ERPNext
+        all_biotime_checkins = []
+        start_time = get_last_checkin(device)
+        end_time = (start_time + datetime.timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
         terminal_alias = device["device_alias"]
         device_checkins, biotime_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
-        )
-        updated_last_activity = fetch_and_create_devices(device_id=device["device_id"]).get("last_activity")
-        if updated_last_activity:
-            frappe.db.set_value("BioTime Device", device["name"], "last_activity", updated_last_activity)
-        frappe.db.set_value("BioTime Device", device["name"], "last_sync_request", frappe.utils.now_datetime())
+        )        
+        
         all_checkins.extend(device_checkins)
         all_biotime_checkins.extend(biotime_checkins)
+        
+        insert_bulk_checkins(all_checkins)
+        insert_bulk_biotime_checkins(all_biotime_checkins)
 
-    insert_bulk_checkins(all_checkins)
-    insert_bulk_biotime_checkins(all_biotime_checkins)
-
-
+       
 def fetch_and_insert(*args, **kwargs):
     checkins, biotime_checkins = fetch_transactions(*args, **kwargs)
 
@@ -292,4 +293,4 @@ def get_last_checkin(device: dict) -> datetime.datetime | None:
         filters={"device_id": ["like", "%" + device.get("device_alias") + "%"]},
         fields=["MAX(time) as time"],
     )
-    return last_timestamp[0].get("time") if last_timestamp else None
+    return last_timestamp[0].get("time") if last_timestamp else device.get("last_activity")
