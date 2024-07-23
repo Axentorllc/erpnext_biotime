@@ -239,8 +239,7 @@ def hourly_sync_devices() -> None:
         )        
         all_checkins.extend(device_checkins)
         all_biotime_checkins.extend(biotime_checkins)
-        print(all_checkins)
-    
+            
         insert_bulk_checkins(all_checkins)
         insert_bulk_biotime_checkins(all_biotime_checkins)
 
