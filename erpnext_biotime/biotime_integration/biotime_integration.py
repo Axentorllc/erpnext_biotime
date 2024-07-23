@@ -120,7 +120,7 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
             
             params = dict(params, page=page)
             response = requests.get(url, params=params, headers=headers)
-            logger.error("Data Response %s", response.text)
+            logger.error("Data Response %s", response.status_code)
             print(response.status_code)
             if response.status_code == 200:
                 transactions = response.json()
@@ -152,7 +152,8 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
                 )
                 response.raise_for_status()
         except requests.RequestException as e:
-            logger.error("HTTPError occurred during API call: %s", str(e))
+            trace = str(e) + frappe.get_traceback(with_context=True)
+            logger.error("HTTPError occurred during API call: %s", trace)
             raise e
 
     return checkins, biotime_checkins
