@@ -7,7 +7,7 @@ from erpnext_biotime.biotime_integration.biotime_integration import insert_bulk_
 from erpnext_biotime.biotime_integration.biotime_integration import fetch_transactions
 from erpnext_biotime.biotime_integration.biotime_integration import insert_bulk_checkins
 
-
+logger = frappe.logger("biotime", allow_site=True, file_count=50)
 class BioTimeDevice(Document):
     pass
 
@@ -25,10 +25,13 @@ def manual_sync_transactions_by_date_range(start_date, end_date, device_id) -> N
     device_checkins, biotime_checkins = fetch_transactions(
         start_time=start_date, end_time=end_date, terminal_alias=terminal_alias, page_size=page_size
     )
-
+    
+    
     if not (start_date and end_date and start_date <= end_date) or not device_checkins:
         frappe.msgprint("Please ensure you provide a valid date range.")
 
+    logger.info(f"Manual Fetching: Number of check-ins in Device ID {device_id}: %s", len(device_checkins))
+    
     all_checkins.extend(device_checkins)
     all_biotime_checkins.extend(biotime_checkins)
 
@@ -48,3 +51,4 @@ def enqueu_manual_sync(start_date, end_date, device_id):
     )
 
     frappe.msgprint("Syncing the transactions in processing; It may take a few seconds.")
+
