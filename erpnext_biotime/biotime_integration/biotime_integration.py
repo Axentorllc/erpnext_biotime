@@ -102,8 +102,6 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
     Fetch transactions from BioTime. http://{ip}/iclock/api/transactions/
     """
     connector, headers = get_connector_with_headers()
-    print(connector)
-    print(headers.get("Authorization"))
     params = {
         k: v
         for k, v in kwargs.items()
@@ -121,7 +119,6 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
             params = dict(params, page=page)
             response = requests.get(url, params=params, headers=headers)
             logger.error("Data Response %s", response.status_code)
-            print(response.status_code)
             if response.status_code == 200:
                 transactions = response.json()
                 for transaction in transactions["data"]:
