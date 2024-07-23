@@ -34,6 +34,7 @@ def get_connector_with_headers() -> tuple:
         # access token is expired
         elif response.status_code == 401:
             connector = refresh_connector_token(connector.name)
+            headers["Authorization"]= f"Bearer {connector.get_password('access_token')}"
             return connector, headers
         else:
             raise Exception(f"Failed to fetch devices. Status code: {response.raise_for_status()}")
@@ -101,6 +102,8 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
     Fetch transactions from BioTime. http://{ip}/iclock/api/transactions/
     """
     connector, headers = get_connector_with_headers()
+    print(connector)
+    print(headers.get("Authorization"))
     params = {
         k: v
         for k, v in kwargs.items()
@@ -114,8 +117,11 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
     while is_next:
         try:
             url = f"{connector.company_portal}/iclock/api/transactions/"
+            
             params = dict(params, page=page)
             response = requests.get(url, params=params, headers=headers)
+            logger.error("Data Response %s", response.text)
+            print(response.status_code)
             if response.status_code == 200:
                 transactions = response.json()
                 for transaction in transactions["data"]:
@@ -230,10 +236,10 @@ def hourly_sync_devices() -> None:
         device_checkins, biotime_checkins = fetch_transactions(
             start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
         )        
-        
         all_checkins.extend(device_checkins)
         all_biotime_checkins.extend(biotime_checkins)
-        
+        print(all_checkins)
+    
         insert_bulk_checkins(all_checkins)
         insert_bulk_biotime_checkins(all_biotime_checkins)
 
@@ -288,9 +294,11 @@ def insert_location(*args, **kwargs):
 
 
 def get_last_checkin(device: dict) -> datetime.datetime | None:
+    
     last_timestamp = frappe.db.get_all(
         "Employee Checkin",
         filters={"device_id": ["like", "%" + device.get("device_alias") + "%"]},
         fields=["MAX(time) as time"],
     )
-    return last_timestamp[0].get("time") if last_timestamp else device.get("last_activity")
+    
+    return last_timestamp[0].get("time") if last_timestamp else device.get('last_activity')
