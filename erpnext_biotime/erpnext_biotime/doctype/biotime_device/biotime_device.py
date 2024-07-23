@@ -11,7 +11,6 @@ logger = frappe.logger("biotime", allow_site=True, file_count=50)
 class BioTimeDevice(Document):
     pass
 
-
 def manual_sync_transactions_by_date_range(start_date, end_date, device_id) -> None:
     page_size = 1000
     terminal_alias = frappe.db.get_value("BioTime Device", {"device_id": device_id}, "device_alias")
@@ -30,7 +29,7 @@ def manual_sync_transactions_by_date_range(start_date, end_date, device_id) -> N
     if not (start_date and end_date and start_date <= end_date) or not device_checkins:
         frappe.msgprint("Please ensure you provide a valid date range.")
 
-    logger.info(f"Manual Fetching: Number of check-ins in Device ID {device_id}: %s", len(device_checkins))
+    logger.error(f"Manual Fetching: Number of check-ins in Device ID {device_id}: %s", len(device_checkins))
     
     all_checkins.extend(device_checkins)
     all_biotime_checkins.extend(biotime_checkins)
