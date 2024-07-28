@@ -115,7 +115,6 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
     while is_next:
         try:
             url = f"{connector.company_portal}/iclock/api/transactions/"
-            
             params = dict(params, page=page)
             response = requests.get(url, params=params, headers=headers)
             logger.error("Data Response %s", response.status_code)
@@ -241,9 +240,10 @@ def hourly_sync_devices() -> None:
 def device_sync_interval(device:dict) -> None:
 
     end_time_now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    end_time=datetime.datetime(1,1,1).strftime("%Y-%m-%d %H:%M:%S")
     h=2
     device_id=device["device_id"]
-    while True:
+    while end_time<end_time_now:
         try:
             start_time = get_last_checkin(device)
             end_time = (start_time + datetime.timedelta(hours=h)).strftime("%Y-%m-%d %H:%M:%S")
