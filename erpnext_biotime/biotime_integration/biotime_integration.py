@@ -229,39 +229,35 @@ def hourly_sync_devices() -> None:
         all_biotime_checkins = []
 
         device_checkins,biotime_checkins=device_sync_interval(device)
-
+        
         all_checkins.extend(device_checkins)
         all_biotime_checkins.extend(biotime_checkins)
-
+        
         insert_bulk_checkins(all_checkins)
         insert_bulk_biotime_checkins(all_biotime_checkins)
         
 
-def device_sync_interval(device:dict) -> None:
+def device_sync_interval(device:dict) -> None|tuple[list,list]:
 
-    end_time_now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    time_now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     end_time=datetime.datetime(1,1,1).strftime("%Y-%m-%d %H:%M:%S")
-    h=2
+    num_hours=2
     device_id=device["device_id"]
-    while end_time<end_time_now:
+    while end_time<time_now:
         try:
             start_time = get_last_checkin(device)
-            end_time = (start_time + datetime.timedelta(hours=h)).strftime("%Y-%m-%d %H:%M:%S")
+            end_time = (start_time + datetime.timedelta(hours=num_hours)).strftime("%Y-%m-%d %H:%M:%S")
             terminal_alias = device["device_alias"]
             device_checkins, biotime_checkins = fetch_transactions(
-                start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000
-            )        
-        
+                start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000)
+            
             if len(device_checkins) == 0:
-                h*=2
+                num_hours*=2
                 continue     #retry the same device until !=0
 
-            if end_time>=end_time_now: # keep trying to ftech until datetime.now
-                break
+            logger.error(f"device ID {device_id}, hours {num_hours},device checkins {len(device_checkins)}") 
 
-            logger.error(f"device ID {device_id}, hours {h} , device checkins {len(device_checkins)}")    
-
-            return device_checkins , biotime_checkins        # move for the next device
+            return device_checkins ,biotime_checkins  # move for the next device
 
         except Exception as e:
             logger.error(f"Error syncing device ID {device_id}: {str(e)}")
