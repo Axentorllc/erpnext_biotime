@@ -25,13 +25,13 @@ frappe.ui.form.on('BioTime Device', {
                 {
                     label: __("Start Date"),
                     fieldname: "start_date",
-                    fieldtype: "Date",
+                    fieldtype: "Datetime",
                     reqd: 1
                 },
                 {
                     label: __("End Date"),
                     fieldname: "end_date",
-                    fieldtype: "Date",
+                    fieldtype: "Datetime",
                     reqd: 1
                 }
             ],
