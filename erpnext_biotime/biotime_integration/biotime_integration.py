@@ -117,7 +117,6 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
             url = f"{connector.company_portal}/iclock/api/transactions/"
             params = dict(params, page=page)
             response = requests.get(url, params=params, headers=headers)
-            logger.error("Data Response %s", response.status_code)
             if response.status_code == 200:
                 transactions = response.json()
                 for transaction in transactions["data"]:
@@ -156,6 +155,8 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
 
 
 def insert_bulk_checkins(checkins) -> None:
+    checkin_docs = []
+
     for checkin in checkins:
         try:
             checkin_doc = frappe.new_doc("Employee Checkin")
@@ -165,11 +166,13 @@ def insert_bulk_checkins(checkins) -> None:
             checkin_doc.time = checkin["time"]
             checkin_doc.device_id = f"{checkin['device_sn']} - {checkin['device_alias']}"
             checkin_doc.insert(ignore_permissions=True)
-            frappe.db.commit()
+            checkin_docs.append(checkin_doc)
 
         except Exception as e:
            trace = str(e) + frappe.get_traceback(with_context=True)
            logger.error(trace)
+    logger.info(f"Total inserted checkins: {len(checkins)} out of {len(checkin_docs)} transactions.")
+
         
 def insert_bulk_biotime_checkins(checkins) -> None:
     for checkin in checkins:
@@ -185,7 +188,6 @@ def insert_bulk_biotime_checkins(checkins) -> None:
             checkin_doc.log_type = checkin["log_type"]
             checkin_doc.time = checkin["time"]
             checkin_doc.insert(ignore_permissions=True)
-            frappe.db.commit()
 
         except Exception as e:
            trace = str(e) + frappe.get_traceback(with_context=True)
@@ -225,35 +227,30 @@ def hourly_sync_devices() -> None:
     all_devices = frappe.get_all("BioTime Device", fields=["name", "device_id", "device_alias", "last_activity","last_sync_request"])
    
     for device in all_devices:
-        all_checkins = []
-        all_biotime_checkins = []
 
         device_checkins,biotime_checkins=device_sync_interval(device)
         
-        all_checkins.extend(device_checkins)
-        all_biotime_checkins.extend(biotime_checkins)
-        
-        insert_bulk_checkins(all_checkins)
-        insert_bulk_biotime_checkins(all_biotime_checkins)
+        insert_bulk_checkins(device_checkins)
+        insert_bulk_biotime_checkins(biotime_checkins)
         
 
 def device_sync_interval(device:dict) -> None|tuple[list,list]:
-
-    time_now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    end_time=datetime.datetime(1,1,1).strftime("%Y-%m-%d %H:%M:%S")
+    max_hours=24
     num_hours=2
+
     device_id=device["device_id"]
-    while end_time<time_now:
+    terminal_alias = device["device_alias"]
+    while num_hours<max_hours:
         try:
             start_time = get_last_checkin(device)
             end_time = (start_time + datetime.timedelta(hours=num_hours)).strftime("%Y-%m-%d %H:%M:%S")
-            terminal_alias = device["device_alias"]
+
             device_checkins, biotime_checkins = fetch_transactions(
-                start_time=start_time, end_time=end_time, terminal_alias=terminal_alias, page_size=1000)
+                start_time=start_time, end_time=end_time, terminal_alias=terminal_alias)
             
             if len(device_checkins) == 0:
                 num_hours*=2
-                continue     #retry the same device until !=0
+                continue     #retry with larger nterval 
 
             logger.error(f"device ID {device_id}, hours {num_hours},device checkins {len(device_checkins)}") 
 
@@ -261,6 +258,7 @@ def device_sync_interval(device:dict) -> None|tuple[list,list]:
 
         except Exception as e:
             logger.error(f"Error syncing device ID {device_id}: {str(e)}")
+            return [], []  # Ensure a tuple is always returned
 
 
 def fetch_and_insert(*args, **kwargs):

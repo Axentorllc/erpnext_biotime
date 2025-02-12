@@ -38,12 +38,28 @@ def manual_sync_transactions_by_date_range(start_date, end_date, device_id) -> N
     insert_bulk_biotime_checkins(all_biotime_checkins)
 
 
+def manual_sync_all_transactions(start_time,end_time,emp_code=None) -> None:
+ 
+    try:
+
+        device_checkins, biotime_checkins = fetch_transactions(
+            start_time=start_time, end_time=end_time,emp_code=emp_code )
+
+        logger.error(f"Synced {len(device_checkins)} checkins from {start_time} to {end_time}") 
+        
+        insert_bulk_checkins(device_checkins)
+        insert_bulk_biotime_checkins(biotime_checkins)
+
+    except Exception as e:
+        logger.error(f"Error syncing transactions: {str(e)}")
+
+
 @frappe.whitelist()
 def enqueu_manual_sync(start_date, end_date, device_id):
     frappe.enqueue(
         manual_sync_transactions_by_date_range,
         queue="long",
-        job_name="Manual Biotime Sync",
+        job_name="Manual Biotime Device Sync",
         start_date=start_date,
         end_date=end_date,
         device_id=device_id,
@@ -51,3 +67,13 @@ def enqueu_manual_sync(start_date, end_date, device_id):
 
     frappe.msgprint("Syncing the transactions in processing; It may take a few seconds.")
 
+@frappe.whitelist()
+def enqueu_all_sync(start_time, end_time, emp_code=None):
+    frappe.enqueue(manual_sync_all_transactions,
+        queue="long",
+        job_name="Manual Full Sync",
+        start_time=start_time,   
+        end_time=end_time,       
+        emp_code=emp_code  )
+    
+    frappe.msgprint("Syncing the transactions in processing; It may take a few seconds.")
