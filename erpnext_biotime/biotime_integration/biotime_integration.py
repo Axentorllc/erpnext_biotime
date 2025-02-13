@@ -258,7 +258,9 @@ def device_sync_interval(device:dict) -> None|tuple[list,list]:
 
         except Exception as e:
             logger.error(f"Error syncing device ID {device_id}: {str(e)}")
-            return [], []  # Ensure a tuple is always returned
+            
+    # Ensure a tuple is always returned if no data is found
+    return [], []
 
 
 def fetch_and_insert(*args, **kwargs):
