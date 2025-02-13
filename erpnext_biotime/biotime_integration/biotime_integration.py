@@ -171,7 +171,7 @@ def insert_bulk_checkins(checkins) -> None:
         except Exception as e:
            trace = str(e) + frappe.get_traceback(with_context=True)
            logger.error(trace)
-    logger.info(f"Total inserted checkins: {len(checkins)} out of {len(checkin_docs)} transactions.")
+    logger.error(f"Total inserted checkins: {len(checkin_docs)} out of {len(checkins)} transactions.")
 
         
 def insert_bulk_biotime_checkins(checkins) -> None:
@@ -258,7 +258,9 @@ def device_sync_interval(device:dict) -> None|tuple[list,list]:
 
         except Exception as e:
             logger.error(f"Error syncing device ID {device_id}: {str(e)}")
-            return [], []  # Ensure a tuple is always returned
+            
+    # Ensure a tuple is always returned if no data is found
+    return [], []
 
 
 def fetch_and_insert(*args, **kwargs):
