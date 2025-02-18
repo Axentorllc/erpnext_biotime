@@ -39,11 +39,12 @@ def manual_sync_transactions_by_date_range(start_date, end_date, device_id) -> N
 
 
 def manual_sync_all_transactions(start_time,end_time,emp_code=None) -> None:
+    page_size=1000
  
     try:
 
         device_checkins, biotime_checkins = fetch_transactions(
-            start_time=start_time, end_time=end_time,emp_code=emp_code )
+            start_time=start_time, end_time=end_time,emp_code=emp_code,page_size=page_size)
 
         logger.error(f"Synced {len(device_checkins)} checkins from {start_time} to {end_time}") 
         
