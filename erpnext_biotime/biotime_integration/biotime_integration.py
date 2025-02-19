@@ -171,7 +171,6 @@ def insert_bulk_checkins(checkins) -> None:
         except Exception as e:
            trace = str(e) + frappe.get_traceback(with_context=True)
            logger.error(trace)
-    logger.error(f"Total inserted checkins: {len(checkin_docs)} out of {len(checkins)} transactions.")
 
         
 def insert_bulk_biotime_checkins(checkins) -> None:
