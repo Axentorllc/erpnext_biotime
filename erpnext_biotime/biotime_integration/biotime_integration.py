@@ -39,7 +39,7 @@ def get_connector_with_headers() -> tuple:
     # Check if the access token is valid by making a test request
     try:
         url = f"{connector.company_portal}/iclock/api/terminals/"
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=3000)
         
         # access token is valid
         if response.status_code == 200:
@@ -77,7 +77,7 @@ def fetch_and_create_devices(device_id=None) -> None | dict:
             if not device_id
             else f"{connector.company_portal}/iclock/api/terminals/{device_id}/"
         )
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=3000)
         if response.status_code == 200:
             if device_id:
                 data = response.json()
@@ -140,7 +140,7 @@ def fetch_transactions(*args, **kwargs) -> tuple[list, list]:
             while is_next:
                 url = f"{connector.company_portal}/iclock/api/transactions/"
                 params_with_page = dict(params, page=page)
-                response = requests.get(url, params=params_with_page, headers=headers, timeout=30)
+                response = requests.get(url, params=params_with_page, headers=headers, timeout=3000)
                 
                 if response.status_code == 200:
                     transactions = response.json()
@@ -303,7 +303,7 @@ def refresh_connector_token(docname):
             url,
             data=json.dumps({"username": connector.username, "password": non_hashed_password}),
             headers=headers,
-            timeout=30
+            timeout=3000
         )
         
         if response.status_code == 200:
@@ -408,8 +408,8 @@ def device_sync_interval(device: dict) -> tuple[list, list]:
                        terminal_alias, start_time_str, end_time_str)
 
             device_checkins, biotime_checkins = fetch_transactions(
-                start_time=start_time_str, 
-                end_time=end_time_str, 
+                start_time=start_time, 
+                end_time=end_time, 
                 terminal_alias=terminal_alias
             )
             
