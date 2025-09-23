@@ -516,3 +516,127 @@ def get_last_checkin(device: dict) -> datetime.datetime | None:
         logger.error("Error getting last checkin for device %s: %s", device.get("device_alias"), str(e))
         # Return 24 hours ago as fallback
         return frappe.utils.now_datetime() - datetime.timedelta(hours=24)
+
+def fetch_transactions_by_id(last_synced_id=None, page_size=1000) -> tuple[list, list]:
+    """
+    Fetch transactions from BioTime using ID-based pagination.
+    This is more reliable than date-based queries for hourly sync.
+    """
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            connector, headers = get_connector_with_headers()
+            
+            # Calculate page number based on last synced ID
+            page = 1
+            if last_synced_id and last_synced_id > 0:
+                page = (last_synced_id // page_size) + 1
+                
+            url = f"{connector.company_portal}/iclock/api/transactions/"
+            params = {
+                "page": page,
+                "page_size": page_size
+            }
+            
+            checkins = []
+            biotime_checkins = []
+            
+            response = requests.get(url, params=params, headers=headers, timeout=3000)
+            if response.status_code == 200:
+                transactions = response.json()
+                
+                for i, transaction in enumerate(transactions.get("data", [])):
+                    
+                    # Skip transactions with ID <= last_synced_id
+                    if last_synced_id and transaction.get("id", 0) <= last_synced_id:
+                        continue
+                    
+                    filters = {"attendance_device_id": transaction["emp_code"]}
+                    code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
+                    
+                    _transaction_dict = {
+                        "first_name": transaction["first_name"],
+                        "last_name": transaction["last_name"],
+                        "department": transaction["department"],
+                        "position": transaction["position"],
+                        "device_sn": transaction["terminal_sn"],
+                        "device_alias": transaction["terminal_alias"],
+                        "log_type": "IN" if transaction["punch_state_display"] == "Check In" else "OUT",
+                        "time": transaction["punch_time"],
+                        "transaction_id": transaction.get("id")  # Store transaction ID
+                    }
+                    
+                    if code:
+                        checkins.append(dict(_transaction_dict, employee=code))
+                    else:
+                        biotime_checkins.append(dict(_transaction_dict, biotime_employee_code=transaction["emp_code"]))
+                
+                logger.error(f"Finished processing all transactions. Returning {len(checkins)} employee checkins and {len(biotime_checkins)} biotime checkins")
+                        
+            elif response.status_code == 401:
+                logger.error("Token expired during ID-based transaction fetch, retrying")
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error("Max retries exceeded for authentication")
+                    raise Exception("Max retries exceeded for authentication")
+                continue
+            else:
+                logger.error("Failed to fetch transactions by ID. Status code: %d, Response: %s", 
+                           response.status_code, response.text)
+                response.raise_for_status()
+            
+            return checkins, biotime_checkins
+            
+        except requests.RequestException as e:
+            retry_count += 1
+            if retry_count >= max_retries:
+                trace = str(e) + frappe.get_traceback(with_context=True)
+                logger.error("HTTPError in ID-based fetch after %d retries: %s", max_retries, trace)
+                raise e
+            else:
+                logger.error("ID-based request failed, retrying (%d/%d): %s", retry_count, max_retries, str(e))
+                continue
+
+
+def sync_all_devices_by_id() -> None:
+    """
+    Sync all devices using ID-based pagination instead of date ranges.
+    This is the new recommended method for hourly sync.
+    """
+    try:
+        connector_doc = frappe.get_doc("BioTime Connector", 
+                                     frappe.db.get_value("BioTime Connector", {"is_enabled": 1}))
+        
+        last_synced_id = connector_doc.get("last_synced_id", 0)
+        
+        logger.error("Starting ID-based sync from ID: %d", last_synced_id)
+        
+        device_checkins, biotime_checkins = fetch_transactions_by_id(
+            last_synced_id=last_synced_id,
+            page_size=1000
+        )
+        
+        if device_checkins or biotime_checkins:
+            insert_bulk_checkins(device_checkins)
+            insert_bulk_biotime_checkins(biotime_checkins)
+            
+            max_id = last_synced_id
+            for i, checkin in enumerate(device_checkins + biotime_checkins):
+                if checkin.get("transaction_id", 0) > max_id:
+                    max_id = checkin["transaction_id"]
+            logger.error(f"max_id calculation completed: {max_id}")
+                    
+            if max_id > last_synced_id:
+                connector_doc.last_synced_id = max_id
+                connector_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+                
+            logger.error("ID-based sync completed: %d employee checkins, %d biotime checkins, last ID: %d",
+                       len(device_checkins), len(biotime_checkins), max_id)
+        else:
+            logger.error("No new transactions found from ID: %d", last_synced_id)            
+    except Exception as e:
+        logger.error("Critical error in ID-based sync: %s", str(e))
+        raise e
