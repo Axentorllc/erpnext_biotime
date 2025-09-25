@@ -15,7 +15,8 @@
   "section_break_bg2z9",
   "username",
   "password",
-  "access_token"
+  "access_token",
+  "last_synced_id"
  ],
  "fields": [
   {
@@ -56,11 +57,16 @@
   {
    "fieldname": "section_break_bg2z9",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "last_synced_id",
+   "fieldtype": "Int",
+   "label": "Last Synced ID"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2023-07-19 17:36:57.968370",
+ "modified": "2025-09-23 16:10:36.481317",
  "modified_by": "Administrator",
  "module": "Erpnext Biotime",
  "name": "BioTime Connector",
