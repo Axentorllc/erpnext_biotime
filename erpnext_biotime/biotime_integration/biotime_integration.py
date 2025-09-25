@@ -517,7 +517,7 @@ def get_last_checkin(device: dict) -> datetime.datetime | None:
         # Return 24 hours ago as fallback
         return frappe.utils.now_datetime() - datetime.timedelta(hours=24)
 
-def fetch_transactions_by_id(last_synced_id=None, page_size=1000) -> tuple[list, list]:
+def fetch_transactions_by_id(last_synced_id=None, page_size=200) -> tuple[list, list]:
     """
     Fetch transactions from BioTime using ID-based pagination.
     This is more reliable than date-based queries for hourly sync.
@@ -615,7 +615,7 @@ def sync_all_devices_by_id() -> None:
         
         device_checkins, biotime_checkins = fetch_transactions_by_id(
             last_synced_id=last_synced_id,
-            page_size=1000
+            page_size=200
         )
         
         if device_checkins or biotime_checkins:
