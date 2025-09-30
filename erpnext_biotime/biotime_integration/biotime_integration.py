@@ -489,20 +489,23 @@ def sync_all_devices_by_id() -> None:
         connector_doc = frappe.get_doc("BioTime Connector", 
                                      frappe.db.get_value("BioTime Connector", {"is_enabled": 1}))
         
-        sync_mode=connector_doc.get('sync_mode')
         last_synced_id = connector_doc.get("last_synced_id", 0)
-        last_sync_time = connector_doc.get("last_synced_time").strftime("%Y-%m-%d %H:%M:%S")
+        last_synced_time = connector_doc.get("last_synced_time")
 
-        start_time = None
         sync_start = connector_doc.get("sync_start_date")
         
-        if not last_sync_time:
-            last_sync_time = (sync_start or datetime(datetime.now().year, 9, 1, 0, 0, 0)).strftime("%Y-%m-%d %H:%M:%S")
-            
+        if not last_synced_time:
+            last_synced_time = (sync_start or datetime(datetime.now().year, 1, 1, 0, 0, 0)).strftime("%Y-%m-%d %H:%M:%S")
+
+        if sync_start and sync_start> last_synced_time:
+            # Reset both ID and time
+            last_synced_id = 0
+            last_synced_time = sync_start.strftime("%Y-%m-%d %H:%M:%S")
+    
         logger.error("Starting ID-based sync from ID: %d", last_synced_id)
         
         device_checkins, biotime_checkins, last_synced,last_syncced_portal_id = fetch_transactions_by_id(
-            start_time=last_sync_time,
+            start_time=last_synced_time,
             last_synced_id=last_synced_id,
             page_size=200
         )
@@ -519,7 +522,7 @@ def sync_all_devices_by_id() -> None:
             logger.error("ID-based sync completed: %d employee checkins, %d biotime checkins, last synced time, last synced id: %d",
                        len(device_checkins), len(biotime_checkins), last_synced, last_syncced_portal_id)
         else:
-            logger.error("No new transactions found since: %d", last_sync_time)            
+            logger.error("No new transactions found since: %d", last_synced_time)            
     except Exception as e:
         logger.error("Critical error in ID-based sync: %s", str(e))
         raise e
