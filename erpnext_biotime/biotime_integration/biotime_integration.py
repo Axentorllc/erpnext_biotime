@@ -400,7 +400,7 @@ def get_last_checkin(device: dict) -> datetime | None:
         # Return 24 hours ago as fallback
         return frappe.utils.now_datetime() - datetime.timedelta(hours=24)
 
-def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=20) -> tuple[list, list]:
+def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=50) -> tuple[list, list]:
     """
     Fetch transactions from BioTime using ID-based pagination.
     This is more reliable than date-based queries for hourly sync.
@@ -485,7 +485,6 @@ def sync_all_devices_by_id() -> None:
     This is the new recommended method for hourly sync.
     """
     try:
-        
         connector_doc = frappe.get_doc("BioTime Connector", 
                                      frappe.db.get_value("BioTime Connector", {"is_enabled": 1}))
         
@@ -496,18 +495,13 @@ def sync_all_devices_by_id() -> None:
         
         if not last_synced_time:
             last_synced_time = (sync_start or datetime(datetime.now().year, 1, 1, 0, 0, 0)).strftime("%Y-%m-%d %H:%M:%S")
-
-        if sync_start and sync_start> last_synced_time:
-            # Reset both ID and time
-            last_synced_id = 0
-            last_synced_time = sync_start.strftime("%Y-%m-%d %H:%M:%S")
     
         logger.error("Starting ID-based sync from ID: %d", last_synced_id)
         
         device_checkins, biotime_checkins, last_synced,last_syncced_portal_id = fetch_transactions_by_id(
             start_time=last_synced_time,
             last_synced_id=last_synced_id,
-            page_size=200
+            page_size=50
         )
         
         if device_checkins or biotime_checkins:
