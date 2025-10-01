@@ -400,7 +400,7 @@ def get_last_checkin(device: dict) -> datetime | None:
         # Return 24 hours ago as fallback
         return frappe.utils.now_datetime() - datetime.timedelta(hours=24)
 
-def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=50) -> tuple[list, list]:
+def fetch_transactions_by_id(start_time=None, last_synced_id=None, page_size=50) -> tuple[list, list, str, int]:
     """
     Fetch transactions from BioTime using ID-based pagination.
     This is more reliable than date-based queries for hourly sync.
@@ -409,7 +409,7 @@ def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=50) 
     url = f"{connector.company_portal}/iclock/api/transactions/"
 
     page = 1
-    last_synced_time=start_time
+    last_synced_time = start_time
     checkins, biotime_checkins = [], []
     
     while True:
@@ -424,7 +424,7 @@ def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=50) 
             if response.status_code == 200:
                 transactions = response.json()
                 
-                for i, transaction in enumerate(transactions.get("data", [])):
+                for transaction in transactions.get("data", []):
                     
                     # Skip transactions with ID <= last_synced_id
                     if last_synced_id and transaction.get("id", 0) <= last_synced_id:
@@ -450,16 +450,18 @@ def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=50) 
                     else:
                         biotime_checkins.append(dict(_transaction_dict, biotime_employee_code=transaction["emp_code"]))
 
-                    if last_synced_id < transaction.get("id", 0):
+                    # Update last_synced_id to the highest transaction ID
+                    if not last_synced_id or transaction.get("id", 0) > last_synced_id:
                         last_synced_id = transaction.get("id", 0)
 
+                    # Update last_synced_time to the latest upload_time
                     upload_time = transaction.get("upload_time")
-                    if upload_time >= last_synced_time :
+                    if upload_time and (not last_synced_time or upload_time > last_synced_time):
                         last_synced_time = upload_time
                 
-                logger.error(f"Finished processing all transactions. Returning {len(checkins)} employee checkins and {len(biotime_checkins)} biotime checkins")
-                
+                # Check if there are more pages
                 if not transactions.get("next"):
+                    logger.error(f"Finished processing all transactions. Returning {len(checkins)} employee checkins and {len(biotime_checkins)} biotime checkins")
                     break
 
                 page += 1
@@ -469,13 +471,12 @@ def fetch_transactions_by_id(start_time=None,last_synced_id=None, page_size=50) 
                            response.status_code, response.text)
                 response.raise_for_status()
             
-            return checkins, biotime_checkins,last_synced_time,last_synced_id
-            
         except requests.RequestException as e:
-           
             trace = str(e) + frappe.get_traceback(with_context=True)
             logger.error(f"HTTPError during fetch: {trace}")
             raise e
+    
+    return checkins, biotime_checkins, last_synced_time, last_synced_id
                 
 
 
@@ -485,20 +486,27 @@ def sync_all_devices_by_id() -> None:
     This is the new recommended method for hourly sync.
     """
     try:
+        # import pdb; pdb.set_trace()
         connector_doc = frappe.get_doc("BioTime Connector", 
                                      frappe.db.get_value("BioTime Connector", {"is_enabled": 1}))
         
-        last_synced_id = connector_doc.get("last_synced_id", 0)
-        last_synced_time = connector_doc.get("last_synced_time")
+        last_synced_id = connector_doc.last_synced_id or 0
+        last_synced_time = connector_doc.last_synced_time
 
-        sync_start = connector_doc.get("sync_start_date")
+        sync_start = connector_doc.sync_start_date
         
         if not last_synced_time:
-            last_synced_time = (sync_start or datetime(datetime.now().year, 1, 1, 0, 0, 0)).strftime("%Y-%m-%d %H:%M:%S")
+            # If no last_synced_time, use sync_start_date or default to beginning of current year
+            if sync_start:
+                last_synced_time = sync_start.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                last_synced_time = datetime.datetime(datetime.datetime.now().year, 1, 1, 0, 0, 0).strftime("%Y-%m-%d %H:%M:%S")
+        
+        else: last_synced_time = last_synced_time.strftime("%Y-%m-%d %H:%M:%S")
     
         logger.error("Starting ID-based sync from ID: %d", last_synced_id)
         
-        device_checkins, biotime_checkins, last_synced,last_syncced_portal_id = fetch_transactions_by_id(
+        device_checkins, biotime_checkins, last_synced, last_synced_portal_id = fetch_transactions_by_id(
             start_time=last_synced_time,
             last_synced_id=last_synced_id,
             page_size=50
@@ -509,14 +517,14 @@ def sync_all_devices_by_id() -> None:
             insert_bulk_biotime_checkins(biotime_checkins)
 
             connector_doc.last_synced_time = last_synced
-            connector_doc.last_synced_id = last_syncced_portal_id
+            connector_doc.last_synced_id = last_synced_portal_id
             connector_doc.save(ignore_permissions=True)
             frappe.db.commit()
                             
-            logger.error("ID-based sync completed: %d employee checkins, %d biotime checkins, last synced time, last synced id: %d",
-                       len(device_checkins), len(biotime_checkins), last_synced, last_syncced_portal_id)
+            logger.error("ID-based sync completed: %d employee checkins, %d biotime checkins, last synced time: %s, last synced id: %d",
+                       len(device_checkins), len(biotime_checkins), last_synced, last_synced_portal_id)
         else:
-            logger.error("No new transactions found since: %d", last_synced_time)            
+            logger.error("No new transactions found since: %s", last_synced_time)            
     except Exception as e:
         logger.error("Critical error in ID-based sync: %s", str(e))
         raise e
