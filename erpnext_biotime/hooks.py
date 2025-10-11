@@ -115,7 +115,7 @@ scheduler_events = {
     "all": [],
     "daily": [],
     "hourly": [
-        "erpnext_biotime.biotime_integration.biotime_integration.sync_all_devices_by_id",
+        "erpnext_biotime.biotime_integration.biotime_integration.sync_devices_with_pagination",
     ],
     "weekly": [],
     "monthly": [],
