@@ -19,11 +19,8 @@
   "access_token",
   "biotime_sync_mode_section",
   "column_break_nlsl",
-  "sync_start_date",
-  "column_break_bdpq",
-  "sync_mode",
   "last_synced_id",
-  "last_synced_time"
+  "last_synced_page"
  ],
  "fields": [
   {
@@ -71,22 +68,9 @@
    "label": "Last Synced ID"
   },
   {
-   "description": "Select the date from which transactions should be fetched during the first sync.",
-   "fieldname": "sync_start_date",
-   "fieldtype": "Datetime",
-   "label": "Sync Start Date"
-  },
-  {
    "fieldname": "biotime_sync_mode_section",
    "fieldtype": "Section Break",
    "label": "BioTime Sync Mode"
-  },
-  {
-   "default": "By Last Sync Time",
-   "fieldname": "sync_mode",
-   "fieldtype": "Select",
-   "label": "Sync Mode",
-   "options": "By Last Sync ID\nBy Last Sync Time"
   },
   {
    "fieldname": "column_break_nlsl",
@@ -97,18 +81,14 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "column_break_bdpq",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "last_synced_time",
-   "fieldtype": "Datetime",
-   "label": "Last Synced Time"
+   "fieldname": "last_synced_page",
+   "fieldtype": "Int",
+   "label": "Last Synced Page"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-01 15:21:22.626820",
+ "modified": "2025-10-11 23:24:59.628660",
  "modified_by": "Administrator",
  "module": "Erpnext Biotime",
  "name": "BioTime Connector",

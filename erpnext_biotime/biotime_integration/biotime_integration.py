@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 import frappe
 import requests
+from urllib.parse import urlparse, parse_qs
 
 logger = frappe.logger("biotime", allow_site=True, file_count=50)
 
@@ -400,52 +401,84 @@ def get_last_checkin(device: dict) -> datetime | None:
         # Return 24 hours ago as fallback
         return frappe.utils.now_datetime() - datetime.timedelta(hours=24)
 
-def fetch_transactions_by_id(start_time=None, last_synced_id=None, page_size=200, max_records=200) -> tuple[list, list, str, int]:
+
+def skip_synced_id(data, last_synced_id):
+    #using binary search to find the index of last_synced_id
+    low = 0
+    high = len(data) - 1
+    while low <= high:
+
+        mid = low + (high - low) // 2
+        if data[mid].get('id') == last_synced_id:
+            return mid
+
+        elif data[mid].get('id') < last_synced_id:
+            low = mid + 1
+
+        else:
+            high = mid - 1
+
+    # If we reach here, then the element
+    # was not present
+    return low
+
+def extract_next_page_number(next_url: str) -> int | None:
+    """Extract 'page' number from BioTime 'next' URL."""
+    if not next_url:
+        return None
+    try:
+        parsed = urlparse(next_url)
+        qs = parse_qs(parsed.query)
+        return int(qs.get("page", [None])[0])
+    except Exception:
+        return None
+    
+
+def fetch_transactions_by_pagination(page=None,last_synced_id=None ,page_size=100, max_records=100) -> tuple[list, list, str, int]:
     """
-    Fetch transactions from BioTime using ID-based pagination with a record limit.
+    Fetch transactions from BioTime using pagination with a record limit.
     This is more reliable than date-based queries for hourly sync.
     
     Args:
-        start_time: Starting datetime for filtering transactions
+        page: page number to start fetching from (default: 1)
         last_synced_id: The last transaction ID that was synced (to skip already processed records)
         page_size: Number of records to request per API page (default: 200)
         max_records: Maximum number of NEW records to fetch per sync (default: 200)
     
     Returns:
-        tuple: (checkins, biotime_checkins, last_synced_time, last_synced_id)
+        tuple: (checkins, biotime_checkins, next_page , last_synced_id)
     """
     connector, headers = get_connector_with_headers()
     url = f"{connector.company_portal}/iclock/api/transactions/"
 
-    page = 1
-    last_synced_time = start_time
     checkins, biotime_checkins = [], []
-    processed_count = 0
+    next_page=page
     
-    while processed_count < max_records:
+    while True:
         try:
             params = {
-                "page": page,
+                "page": next_page,
                 "page_size": page_size,
-                "start_time": start_time
             }
                     
             response = requests.get(url, params=params, headers=headers, timeout=3000)
             if response.status_code == 200:
                 transactions = response.json()
+                data=transactions.get("data", [])
                 
                 # If no data returned, we've reached the end
-                if not transactions.get("data"):
+                if not data:
                     break
+
+                # Skip already synced records
+                next_id=skip_synced_id(data, last_synced_id)
                 
-                for transaction in transactions.get("data", []):
-                    # Skip transactions with ID <= last_synced_id (already processed)
-                    if last_synced_id and transaction.get("id", 0) <= last_synced_id:
-                        continue
+                for transaction in data[next_id:]:
                     
                     # Check if we've reached the max_records limit
-                    if processed_count >= max_records:
-                        break
+                    if len(biotime_checkins) + len(checkins) >= max_records:
+
+                        return checkins, biotime_checkins, next_page, last_synced_id
                     
                     filters = {"attendance_device_id": transaction["emp_code"]}
                     code = frappe.db.get_value("Employee", filters=filters, fieldname="name")
@@ -472,25 +505,16 @@ def fetch_transactions_by_id(start_time=None, last_synced_id=None, page_size=200
                     if not last_synced_id or current_id > last_synced_id:
                         last_synced_id = current_id
 
-                    # Update last_synced_time to the latest upload_time
-                    upload_time = transaction.get("upload_time")
-                    if upload_time and (not last_synced_time or upload_time > last_synced_time):
-                        last_synced_time = upload_time
-                    
-                    processed_count += 1
-                
-                # If we've reached the max_records limit, stop fetching more pages
-                if processed_count >= max_records:
-                    break
-                
-                # Check if there are more pages
-                if not transactions.get("next"):
-                    break
+                next_url = transactions.get("next")
+                extracted_page=extract_next_page_number(next_url)
 
-                page += 1
+                if extracted_page:  
+                    next_page=extracted_page
+                else:
+                    break
 
             else:
-                logger.error("Failed to fetch transactions by ID. Status code: %d, Response: %s", 
+                logger.error("Failed to fetch data by ID. Status code: %d, Response: %s", 
                            response.status_code, response.text)
                 response.raise_for_status()
             
@@ -498,52 +522,43 @@ def fetch_transactions_by_id(start_time=None, last_synced_id=None, page_size=200
             trace = str(e) + frappe.get_traceback(with_context=True)
             logger.error(f"HTTPError during fetch: {trace}")
             raise e
-    
-    return checkins, biotime_checkins, last_synced_time, last_synced_id
+
+    return checkins, biotime_checkins, next_page, last_synced_id
                 
 
-def sync_all_devices_by_id() -> None:
+def sync_devices_with_pagination() -> None:
     """
-    Sync all devices using ID-based pagination instead of date ranges.
+    Sync all devices using pagination.
     This is the new recommended method for hourly sync.
     """
     try:
+        
         connector_doc = frappe.get_doc("BioTime Connector", 
                                      frappe.db.get_value("BioTime Connector", {"is_enabled": 1}))
         
         last_synced_id = connector_doc.last_synced_id or 0
-        last_synced_time = connector_doc.last_synced_time
+        last_synced_page=connector_doc.last_synced_page 
 
-        sync_start = connector_doc.sync_start_date
-        
-        if not last_synced_time:
-            # If no last_synced_time, use sync_start_date or default to beginning of current year
-            if sync_start:
-                last_synced_time = sync_start.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                last_synced_time = datetime.datetime(datetime.datetime.now().year, 1, 1, 0, 0, 0).strftime("%Y-%m-%d %H:%M:%S")
-        
-        else: last_synced_time = last_synced_time.strftime("%Y-%m-%d %H:%M:%S")
-        
-        device_checkins, biotime_checkins, last_synced, last_synced_portal_id = fetch_transactions_by_id(
-            start_time=last_synced_time,
+        device_checkins, biotime_checkins, next_page, last_synced_portal_id = fetch_transactions_by_pagination(
+            page=last_synced_page,
             last_synced_id=last_synced_id,
-            page_size=200
+            page_size=100,
+            max_records=100
         )
         
         if device_checkins or biotime_checkins:
             insert_bulk_checkins(device_checkins)
             insert_bulk_biotime_checkins(biotime_checkins)
 
-            connector_doc.last_synced_time = last_synced
+            connector_doc.last_synced_page = next_page
             connector_doc.last_synced_id = last_synced_portal_id
             connector_doc.save(ignore_permissions=True)
             frappe.db.commit()
                             
-            logger.error("ID-based sync completed: %d employee checkins, %d biotime checkins, last synced time: %s, last synced id: %d",
-                       len(device_checkins), len(biotime_checkins), last_synced, last_synced_portal_id)
+            logger.error("ID-based sync completed: %d employee checkins, %d biotime checkins, last synced page: %s, last synced id: %d",
+                       len(device_checkins), len(biotime_checkins), next_page, last_synced_portal_id)
         else:
-            logger.error("No new transactions found since: %s", last_synced_time)            
+            logger.error("No new data found since: %s",)            
     except Exception as e:
         logger.error("Critical error in ID-based sync: %s", str(e))
         raise e
