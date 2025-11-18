@@ -543,7 +543,7 @@ def sync_devices_with_pagination() -> None:
             page=last_synced_page,
             last_synced_id=last_synced_id,
             page_size=100,
-            max_records=100
+            max_records=connector_doc.hourly_sync_limit
         )
         
         if device_checkins or biotime_checkins:
