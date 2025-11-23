@@ -113,7 +113,9 @@ app_license = "MIT"
 
 scheduler_events = {
     "all": [],
-    "daily": [],
+    "daily": [
+        "erpnext_biotime.biotime_integration.biotime_integration.update_last_synced_checkin",
+    ],
     "hourly": [
         "erpnext_biotime.biotime_integration.biotime_integration.sync_devices_with_pagination",
     ],
