@@ -20,7 +20,9 @@
   "biotime_sync_mode_section",
   "column_break_nlsl",
   "last_synced_id",
-  "last_synced_page"
+  "last_synced_page",
+  "column_break_vfyz",
+  "hourly_sync_limit"
  ],
  "fields": [
   {
@@ -84,11 +86,21 @@
    "fieldname": "last_synced_page",
    "fieldtype": "Int",
    "label": "Last Synced Page"
+  },
+  {
+   "fieldname": "column_break_vfyz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Maximum number of BioTime checkins synced per hour",
+   "fieldname": "hourly_sync_limit",
+   "fieldtype": "Int",
+   "label": "Hourly Sync Limit"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-11 23:24:59.628660",
+ "modified": "2025-11-17 13:59:26.981839",
  "modified_by": "Administrator",
  "module": "Erpnext Biotime",
  "name": "BioTime Connector",
