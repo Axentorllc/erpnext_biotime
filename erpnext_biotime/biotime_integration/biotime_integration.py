@@ -1,7 +1,7 @@
 import datetime
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import frappe
 import requests
 from urllib.parse import urlparse, parse_qs
@@ -562,3 +562,25 @@ def sync_devices_with_pagination() -> None:
     except Exception as e:
         logger.error("Critical error in ID-based sync: %s", str(e))
         raise e
+
+
+def update_last_synced_checkin():
+    yesterday = datetime.now().date() - timedelta(days=1)
+
+    shift_types = frappe.get_all("Shift Type", pluck="name")
+
+    for shift_name in shift_types:
+        try:
+            shift = frappe.get_doc("Shift Type", shift_name)
+            allow_after = shift.allow_check_out_after_shift_end_time or 0
+
+            last_sync = (
+                datetime.combine(yesterday, datetime.min.time()) + shift.end_time + timedelta(minutes=allow_after + 60)
+            )
+
+            shift.last_sync_of_checkin = last_sync
+            shift.save(ignore_permissions=True)
+            frappe.db.commit()
+
+        except Exception as e:
+            frappe.log_error(message=str(e), title=f"FAILED {shift_name}")
