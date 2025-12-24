@@ -49,7 +49,7 @@ def create_or_update_attendance_for_employee_checkin(checkin, shift_doc):
 		order_by="time",
 	)
 
-	attendance_date = checkin.shift_actual_start.date()
+	attendance_date = checkin.shift_start.date()
 
 	attendance_status, total_working_hours, late_entry, early_exit, in_time, out_time = shift_doc.get_attendance(logs)
 	mark_attendance_and_link_log(
